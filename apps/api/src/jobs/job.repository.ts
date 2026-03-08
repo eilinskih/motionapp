@@ -10,6 +10,7 @@ export interface JobRepository {
 
 export class JsonJobRepository implements JobRepository {
   private readonly memory = new Map<string, JobRecord>();
+  private readonly updateQueues = new Map<string, Promise<void>>();
 
   constructor(private readonly filePath: string) {}
 
@@ -35,13 +36,38 @@ export class JsonJobRepository implements JobRepository {
   }
 
   async update(id: string, updater: (job: JobRecord) => JobRecord): Promise<JobRecord | null> {
-    const current = this.memory.get(id);
-    if (!current) return null;
+    return this.withJobLock(id, async () => {
+      const current = this.memory.get(id);
+      if (!current) return null;
 
-    const updated = updater({ ...current });
-    this.memory.set(id, updated);
-    await this.persist();
-    return updated;
+      const updated = updater({ ...current });
+      this.memory.set(id, updated);
+      await this.persist();
+      return updated;
+    });
+  }
+
+  private async withJobLock<T>(id: string, task: () => Promise<T>): Promise<T> {
+    // In-process per-job mutex: serialize update() calls for the same id to avoid lost updates.
+    const previous = this.updateQueues.get(id) ?? Promise.resolve();
+
+    let release!: () => void;
+    const current = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    const queued = previous.then(() => current);
+    this.updateQueues.set(id, queued);
+
+    await previous;
+    try {
+      return await task();
+    } finally {
+      release();
+      if (this.updateQueues.get(id) === queued) {
+        this.updateQueues.delete(id);
+      }
+    }
   }
 
   private async persist(): Promise<void> {
