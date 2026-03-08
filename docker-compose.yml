@@ -1,0 +1,55 @@
+version: '3.9'
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - '6379:6379'
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    environment:
+      - NODE_ENV=development
+      - API_PORT=4000
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - STORAGE_ROOT=/data/storage
+      - WEB_ORIGIN=http://localhost:3000
+    volumes:
+      - .:/workspace
+      - api_data:/data/storage
+    ports:
+      - '4000:4000'
+    depends_on:
+      - redis
+
+  worker:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    environment:
+      - NODE_ENV=development
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - STORAGE_ROOT=/data/storage
+    volumes:
+      - .:/workspace
+      - api_data:/data/storage
+    depends_on:
+      - redis
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_BASE_URL=http://localhost:4000
+    ports:
+      - '3000:3000'
+    depends_on:
+      - api
+
+volumes:
+  api_data:
