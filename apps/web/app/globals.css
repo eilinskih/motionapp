@@ -34,3 +34,10 @@ a { color: #60a5fa; }
   padding: 0.75rem;
   margin: 0.35rem 0;
 }
+
+input:focus-visible,
+button:focus-visible,
+a:focus-visible {
+  outline: 3px solid #fbbf24;
+  outline-offset: 2px;
+}

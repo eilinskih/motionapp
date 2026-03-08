@@ -33,7 +33,7 @@ export class JobsService {
     };
 
     await this.repository.create(job);
-    await this.queue.add(this.queueName, { id });
+    await this.queue.add('process-motion', { id });
 
     return job;
   }

@@ -18,7 +18,10 @@ export default function JobPage({ params }: { params: { id: string } }) {
         const res = await fetch(`${API_BASE}/jobs/${params.id}`);
         if (!res.ok) throw new Error('Failed to load job');
         const data = (await res.json()) as JobRecord;
-        if (mounted) setJob(data);
+        if (mounted) {
+          setJob(data);
+          setError(null);
+        }
       } catch (err) {
         if (mounted) setError(err instanceof Error ? err.message : 'Unknown error');
       }

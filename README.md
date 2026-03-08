@@ -55,6 +55,9 @@ Services:
 
 ### Run directly (without Docker)
 ```bash
+# terminal 0 (start Redis first)
+docker compose up redis
+
 # terminal 1
 pnpm --filter @motionapp/api dev
 

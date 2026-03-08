@@ -1,9 +1,9 @@
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import Redis from 'ioredis';
 import { Worker } from 'bullmq';
 import { MockEngine } from '@motionapp/engine-sdk';
-import { createStoragePaths, ensureJobDir } from '@motionapp/storage';
+import { createStoragePaths, ensureJobDir, readJsonFile, withFileLock, writeJsonAtomic } from '@motionapp/storage';
 import { JobRecord, JobStatus } from '@motionapp/shared';
 import { extractAudio, normalizeToMp4 } from '@motionapp/ffmpeg-utils';
 
@@ -17,8 +17,7 @@ const engine = new MockEngine();
 
 const loadJobs = async (): Promise<JobRecord[]> => {
   try {
-    const raw = await readFile(jobsFile, 'utf8');
-    return JSON.parse(raw) as JobRecord[];
+    return await readJsonFile<JobRecord[]>(jobsFile);
   } catch {
     return [];
   }
@@ -26,18 +25,19 @@ const loadJobs = async (): Promise<JobRecord[]> => {
 
 const saveJobs = async (jobs: JobRecord[]): Promise<void> => {
   await mkdir(path.dirname(jobsFile), { recursive: true });
-  await writeFile(jobsFile, JSON.stringify(jobs, null, 2), 'utf8');
+  await writeJsonAtomic(jobsFile, jobs);
 };
 
-const updateJob = async (id: string, updater: (job: JobRecord) => JobRecord): Promise<JobRecord> => {
-  const jobs = await loadJobs();
-  const idx = jobs.findIndex((j) => j.id === id);
-  if (idx < 0) throw new Error(`Job ${id} not found`);
+const updateJob = async (id: string, updater: (job: JobRecord) => JobRecord): Promise<JobRecord> =>
+  withFileLock(jobsFile, async () => {
+    const jobs = await loadJobs();
+    const idx = jobs.findIndex((j) => j.id === id);
+    if (idx < 0) throw new Error(`Job ${id} not found`);
 
-  jobs[idx] = updater(jobs[idx]);
-  await saveJobs(jobs);
-  return jobs[idx];
-};
+    jobs[idx] = updater(jobs[idx]);
+    await saveJobs(jobs);
+    return jobs[idx];
+  });
 
 const logStep = (job: JobRecord, status: JobStatus, message: string, errorMessage?: string): JobRecord => ({
   ...job,

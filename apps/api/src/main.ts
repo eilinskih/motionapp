@@ -11,4 +11,8 @@ async function bootstrap() {
   console.log(`API listening on :${env.port}`);
 }
 
-bootstrap();
+bootstrap().catch((error) => {
+  // eslint-disable-next-line no-console
+  console.error('Application bootstrap failed', error);
+  process.exit(1);
+});
