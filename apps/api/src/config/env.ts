@@ -1,3 +1,5 @@
+import path from 'node:path';
+
 export interface AppEnv {
   port: number;
   redisHost: string;
@@ -15,10 +17,15 @@ const parsePort = (value: string | undefined, fallback: number, name: string): n
   return parsed;
 };
 
+const resolveStorageRoot = (value: string | undefined): string => {
+  if (value) return path.resolve(value);
+  return path.resolve(process.cwd(), 'storage');
+};
+
 export const env: AppEnv = {
   port: parsePort(process.env.API_PORT, 4000, 'API_PORT'),
   redisHost: process.env.REDIS_HOST ?? 'localhost',
   redisPort: parsePort(process.env.REDIS_PORT, 6379, 'REDIS_PORT'),
-  storageRoot: process.env.STORAGE_ROOT ?? 'storage',
+  storageRoot: resolveStorageRoot(process.env.STORAGE_ROOT),
   webOrigin: process.env.WEB_ORIGIN ?? 'http://localhost:3000'
 };

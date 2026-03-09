@@ -25,7 +25,7 @@ export const normalizeToMp4 = async (inputPath: string, outputPath: string): Pro
     '-i',
     inputPath,
     '-vf',
-    "scale='min(1280,iw)':'min(720,ih)':force_original_aspect_ratio=decrease",
+    "scale='min(1280,iw)':'min(720,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2",
     '-c:v',
     'libx264',
     '-preset',
@@ -58,6 +58,29 @@ export const extractThumbnail = async (inputPath: string, outputPath: string): P
 
 export const extractAudio = async (inputPath: string, audioPath: string): Promise<void> => {
   await runFfmpeg(['-i', inputPath, '-vn', '-acodec', 'aac', audioPath]);
+};
+
+
+export const createMockGeneratedVideo = async (
+  drivingVideoPath: string,
+  outputPath: string
+): Promise<void> => {
+  await runFfmpeg([
+    '-i',
+    drivingVideoPath,
+    '-vf',
+    "hue=s=1.15,eq=contrast=1.06:brightness=0.02,drawbox=x=10:y=10:w=iw/5:h=ih/16:color=blue@0.35:t=fill",
+    '-c:v',
+    'libx264',
+    '-preset',
+    'veryfast',
+    '-crf',
+    '23',
+    '-pix_fmt',
+    'yuv420p',
+    '-an',
+    outputPath
+  ]);
 };
 
 export const createFinalOutputVideo = async (

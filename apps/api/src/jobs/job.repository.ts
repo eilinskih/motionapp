@@ -7,11 +7,12 @@ export interface JobRepository {
   create(job: JobRecord): Promise<JobRecord>;
   findById(id: string): Promise<JobRecord | null>;
   update(id: string, updater: (job: JobRecord) => JobRecord): Promise<JobRecord | null>;
+  delete(id: string): Promise<void>;
 }
 
 export class JsonJobRepository implements JobRepository {
   private readonly memory = new Map<string, JobRecord>();
-  private readonly updateQueues = new Map<string, Promise<void>>();
+  private mutationChain: Promise<void> = Promise.resolve();
 
   constructor(private readonly filePath: string) {}
 
@@ -30,10 +31,12 @@ export class JsonJobRepository implements JobRepository {
   }
 
   async create(job: JobRecord): Promise<JobRecord> {
-    await this.refreshFromDisk();
-    this.memory.set(job.id, job);
-    await this.persist();
-    return job;
+    return this.withRepoLock(async () => {
+      await this.refreshFromDisk();
+      this.memory.set(job.id, job);
+      await this.persist();
+      return job;
+    });
   }
 
   async findById(id: string): Promise<JobRecord | null> {
@@ -42,9 +45,8 @@ export class JsonJobRepository implements JobRepository {
   }
 
   async update(id: string, updater: (job: JobRecord) => JobRecord): Promise<JobRecord | null> {
-    return this.withJobLock(id, async () => {
+    return this.withRepoLock(async () => {
       await this.refreshFromDisk();
-
       const current = this.memory.get(id);
       if (!current) return null;
 
@@ -55,34 +57,34 @@ export class JsonJobRepository implements JobRepository {
     });
   }
 
-  private async refreshFromDisk(): Promise<void> {
-    const jobs = await withFileLock(this.filePath, async () => readJsonFile<JobRecord[]>(this.filePath));
-    this.memory.clear();
-    for (const job of jobs) {
-      this.memory.set(job.id, job);
-    }
+  async delete(id: string): Promise<void> {
+    await this.withRepoLock(async () => {
+      await this.refreshFromDisk();
+      this.memory.delete(id);
+      await this.persist();
+    });
   }
 
-  private async withJobLock<T>(id: string, task: () => Promise<T>): Promise<T> {
-    // In-process per-job mutex: serialize update() calls for the same id to avoid lost updates.
-    const previous = this.updateQueues.get(id) ?? Promise.resolve();
-
+  private async withRepoLock<T>(task: () => Promise<T>): Promise<T> {
+    const previous = this.mutationChain;
     let release!: () => void;
-    const current = new Promise<void>((resolve) => {
+    this.mutationChain = new Promise<void>((resolve) => {
       release = resolve;
     });
-
-    const queued = previous.then(() => current);
-    this.updateQueues.set(id, queued);
 
     await previous;
     try {
       return await task();
     } finally {
       release();
-      if (this.updateQueues.get(id) === queued) {
-        this.updateQueues.delete(id);
-      }
+    }
+  }
+
+  private async refreshFromDisk(): Promise<void> {
+    const jobs = await withFileLock(this.filePath, async () => readJsonFile<JobRecord[]>(this.filePath));
+    this.memory.clear();
+    for (const job of jobs) {
+      this.memory.set(job.id, job);
     }
   }
 
@@ -94,13 +96,17 @@ export class JsonJobRepository implements JobRepository {
   }
 }
 
-export const appendLog = (job: JobRecord, message: string): JobRecord => ({
-  ...job,
-  logs: [...job.logs, { at: new Date().toISOString(), message }],
-  updatedAt: new Date().toISOString()
-});
+export const appendLog = (job: JobRecord, message: string): JobRecord => {
+  const now = new Date().toISOString();
+  return {
+    ...job,
+    logs: [...job.logs, { at: now, message }],
+    updatedAt: now
+  };
+};
 
 export const withStatus = (job: JobRecord, status: JobStatus): JobRecord => ({
   ...appendLog(job, `status -> ${status}`),
-  status
+  status,
+  currentStep: status
 });

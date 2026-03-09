@@ -1,4 +1,4 @@
-import { mkdir, writeFile, copyFile, open, rm, readFile, rename } from 'node:fs/promises';
+import { mkdir, writeFile, copyFile, open, rm, readFile, rename, stat, unlink } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 
@@ -47,19 +47,31 @@ export const fileExists = (fullPath: string): boolean => existsSync(fullPath);
 
 const sleep = async (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
+const isPidAlive = (pid: number): boolean => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 export const withFileLock = async <T>(
   lockBasePath: string,
   task: () => Promise<T>,
-  options?: { timeoutMs?: number; retryDelayMs?: number }
+  options?: { timeoutMs?: number; retryDelayMs?: number; staleThresholdMs?: number }
 ): Promise<T> => {
   const lockPath = `${lockBasePath}.lock`;
   const timeoutMs = options?.timeoutMs ?? 5000;
   const retryDelayMs = options?.retryDelayMs ?? 50;
+  const staleThresholdMs = options?.staleThresholdMs ?? 30000;
   const start = Date.now();
 
   while (true) {
     try {
       const handle = await open(lockPath, 'wx');
+      const payload = JSON.stringify({ pid: process.pid, createdAt: Date.now() });
+      await handle.writeFile(payload, 'utf8');
       await handle.close();
       break;
     } catch (error) {
@@ -67,6 +79,31 @@ export const withFileLock = async <T>(
       if (err.code !== 'EEXIST') {
         throw error;
       }
+
+      try {
+        const lockStat = await stat(lockPath);
+        const age = Date.now() - lockStat.mtimeMs;
+        let stale = age > staleThresholdMs;
+
+        if (!stale) {
+          try {
+            const lockData = JSON.parse(await readFile(lockPath, 'utf8')) as { pid?: number };
+            if (typeof lockData.pid === 'number' && !isPidAlive(lockData.pid)) {
+              stale = true;
+            }
+          } catch {
+            // keep stale=false unless age threshold hit
+          }
+        }
+
+        if (stale) {
+          await unlink(lockPath).catch(() => undefined);
+          continue;
+        }
+      } catch {
+        // if lock disappears between checks just retry
+      }
+
       if (Date.now() - start >= timeoutMs) {
         throw new Error(`Timed out waiting for file lock: ${lockPath}`);
       }

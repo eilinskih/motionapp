@@ -40,21 +40,30 @@ export class JobsService {
     return job;
   }
 
+  async deleteJob(id: string): Promise<void> {
+    await this.repository.delete(id);
+  }
+
   async getJob(id: string): Promise<JobRecord> {
     const job = await this.repository.findById(id);
     if (!job) throw new NotFoundException('job not found');
     return job;
   }
 
+  private resolveStoredPath(filePath: string): string {
+    if (path.isAbsolute(filePath)) return filePath;
+    return path.resolve(this.storageRoot, filePath);
+  }
+
   async getResultPath(id: string): Promise<string> {
     const job = await this.getJob(id);
     if (!job.outputVideoPath) throw new NotFoundException('result not ready');
-    return path.resolve(job.outputVideoPath);
+    return this.resolveStoredPath(job.outputVideoPath);
   }
 
   async getThumbnailPath(id: string): Promise<string> {
     const job = await this.getJob(id);
     if (!job.previewThumbnailPath) throw new NotFoundException('thumbnail not ready');
-    return path.resolve(job.previewThumbnailPath);
+    return this.resolveStoredPath(job.previewThumbnailPath);
   }
 }

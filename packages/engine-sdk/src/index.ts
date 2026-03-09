@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { createFinalOutputVideo } from '@motionapp/ffmpeg-utils';
+import { createFinalOutputVideo, createMockGeneratedVideo } from '@motionapp/ffmpeg-utils';
 
 export interface GenerationInput {
   sourcePhotoPath: string;
@@ -40,8 +40,8 @@ export class MockEngine implements MotionGenerationEngine {
       await sleep(200);
     }
 
-    // Mock generation result: re-use normalized driving video as synthesized motion clip.
-    await createFinalOutputVideo(input.normalizedDrivingVideoPath, input.generatedVideoPath);
+    // Mock generation result: apply a deterministic visual transform so output differs from raw driving video.
+    await createMockGeneratedVideo(input.normalizedDrivingVideoPath, input.generatedVideoPath);
 
     // Final composition preserves extracted audio when available.
     await createFinalOutputVideo(input.generatedVideoPath, input.outputVideoPath, input.audioPath);

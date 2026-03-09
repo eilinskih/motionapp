@@ -35,6 +35,7 @@ services:
       - STORAGE_ROOT=/data/storage
     volumes:
       - .:/workspace
+      - worker_node_modules:/workspace/node_modules
       - api_data:/data/storage
     depends_on:
       - redis
@@ -53,3 +54,4 @@ services:
 
 volumes:
   api_data:
+  worker_node_modules:

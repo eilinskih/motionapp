@@ -9,26 +9,30 @@ import { extractAudio, extractThumbnail, normalizeImage, normalizeToMp4 } from '
 
 const redisHost = process.env.REDIS_HOST ?? 'localhost';
 const redisPort = Number(process.env.REDIS_PORT ?? 6379);
-const storageRoot = process.env.STORAGE_ROOT ?? 'storage';
+const storageRoot = path.resolve(process.env.STORAGE_ROOT ?? 'storage');
 const queueName = 'motion-jobs';
-const jobsFile = path.join(storageRoot, 'jobs.json');
+const jobsFile = path.resolve(storageRoot, 'jobs.json');
 
 const engine = new MockEngine();
 
 const loadJobs = async (): Promise<JobRecord[]> => {
   try {
     return await readJsonFile<JobRecord[]>(jobsFile);
-  } catch {
-    return [];
+  } catch (error) {
+    const err = error as NodeJS.ErrnoException;
+    if (err.code === 'ENOENT') return [];
+    logEvent('error', 'jobs_load_failed', { jobsFile, error: err.message });
+    throw error;
   }
 };
 
 const saveJobs = async (jobs: JobRecord[]): Promise<void> => {
-  await mkdir(path.dirname(jobsFile), { recursive: true });
-  await writeJsonAtomic(jobsFile, jobs);
+  const resolvedJobsFile = path.resolve(jobsFile);
+  await mkdir(path.dirname(resolvedJobsFile), { recursive: true });
+  await writeJsonAtomic(resolvedJobsFile, jobs);
 };
 
-const logEvent = (level: 'info' | 'error', event: string, ctx: Record<string, unknown>) => {
+function logEvent(level: 'info' | 'error', event: string, ctx: Record<string, unknown>) {
   // eslint-disable-next-line no-console
   console.log(
     JSON.stringify({
@@ -38,7 +42,7 @@ const logEvent = (level: 'info' | 'error', event: string, ctx: Record<string, un
       ...ctx
     })
   );
-};
+}
 
 const withJobState = (
   job: JobRecord,
@@ -48,16 +52,19 @@ const withJobState = (
   message: string,
   errorMessage?: string,
   fields?: Partial<JobRecord>
-): JobRecord => ({
-  ...job,
-  ...fields,
-  status,
-  currentStep,
-  progress,
-  errorMessage,
-  updatedAt: new Date().toISOString(),
-  logs: [...job.logs, { at: new Date().toISOString(), message }]
-});
+): JobRecord => {
+  const now = new Date().toISOString();
+  return {
+    ...job,
+    ...fields,
+    status,
+    currentStep,
+    progress,
+    errorMessage,
+    updatedAt: now,
+    logs: [...job.logs, { at: now, message }]
+  };
+};
 
 const updateJob = async (id: string, updater: (job: JobRecord) => JobRecord): Promise<JobRecord> =>
   withFileLock(jobsFile, async () => {
@@ -161,4 +168,19 @@ const worker = new Worker(
 
 worker.on('ready', () => {
   logEvent('info', 'worker_ready', { queueName, redisHost, redisPort });
+});
+
+
+const shutdown = async (signal: 'SIGINT' | 'SIGTERM') => {
+  logEvent('info', 'worker_shutdown', { queueName, signal });
+  await worker.close();
+  process.exit(0);
+};
+
+process.on('SIGTERM', () => {
+  void shutdown('SIGTERM');
+});
+
+process.on('SIGINT', () => {
+  void shutdown('SIGINT');
 });
