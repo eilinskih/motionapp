@@ -2,7 +2,7 @@ import { mkdir, copyFile } from 'node:fs/promises';
 import path from 'node:path';
 import Redis from 'ioredis';
 import { Worker } from 'bullmq';
-import { MockEngine } from '@motionapp/engine-sdk';
+import { createEngineFromEnv } from '@motionapp/engine-sdk';
 import { createStoragePaths, ensureJobDir, readJsonFile, withFileLock, writeJsonAtomic } from '@motionapp/storage';
 import { JobRecord, JobStatus, JobStep } from '@motionapp/shared';
 import { extractAudio, extractThumbnail, normalizeImage, normalizeToMp4 } from '@motionapp/ffmpeg-utils';
@@ -13,7 +13,7 @@ const storageRoot = path.resolve(process.env.STORAGE_ROOT ?? 'storage');
 const queueName = 'motion-jobs';
 const jobsFile = path.resolve(storageRoot, 'jobs.json');
 
-const engine = new MockEngine();
+const engine = createEngineFromEnv(process.env);
 
 const loadJobs = async (): Promise<JobRecord[]> => {
   try {
@@ -121,7 +121,7 @@ const worker = new Worker(
         })
       );
 
-      logEvent('info', 'pose_extraction_mock_start', { jobId: id, poseDir });
+      logEvent('info', 'engine_run_start', { jobId: id, poseDir, engine: process.env.ENGINE ?? 'mock' });
 
       const generatedVideoPath = path.join(tempDir, 'generated.mock.mp4');
       const outputVideoPath = path.join(storagePaths.outputsDir, `${id}.mp4`);

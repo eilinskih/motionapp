@@ -18,7 +18,7 @@ Production-structured MVP for a motion-control generation workflow.
 - `packages/shared` - shared types (`JobStatus`, `JobRecord`)
 - `packages/storage` - filesystem path + file helpers
 - `packages/ffmpeg-utils` - ffmpeg wrappers (normalize/extract/finalize)
-- `packages/engine-sdk` - `MotionGenerationEngine` + `MockEngine`
+- `packages/engine-sdk` - adapter-based `MotionGenerationEngine` (`mock`, `local-process`, `remote-http`)
 
 ## Workflow
 1. User uploads source photo + driving video.
@@ -81,6 +81,20 @@ pnpm --filter @motionapp/web dev
 - `REDIS_PORT` (default `6379`)
 - `STORAGE_ROOT` (default `storage`)
 
+### Engine selection (`apps/worker`)
+Worker orchestration remains in Node.js, while inference can be switched by env var:
+
+- `ENGINE=mock` (default)
+- `ENGINE=local-process`
+- `ENGINE=remote-http`
+
+Optional local process command hooks (used when `ENGINE=local-process`):
+- `LOCAL_PROCESS_POSE_COMMAND`
+- `LOCAL_PROCESS_FRAME_COMMAND`
+- `LOCAL_PROCESS_COMPOSE_COMMAND`
+
+Each command is executed via `child_process` semantics (`spawn` with shell), and receives paths through environment variables (`SOURCE_PHOTO_PATH`, `NORMALIZED_DRIVING_VIDEO_PATH`, `POSE_OUTPUT_DIR`, `FRAMES_OUTPUT_DIR`, `GENERATED_VIDEO_PATH`, `OUTPUT_VIDEO_PATH`, `AUDIO_PATH`).
+
 ### Web (`apps/web`)
 - `NEXT_PUBLIC_API_BASE_URL` (default `http://localhost:4000`)
 
@@ -92,5 +106,18 @@ pnpm typecheck
 
 ## Future-ready extension points
 - Replace JSON repository with Postgres by implementing `JobRepository` interface in API.
-- Replace `MockEngine` with local Python bridge or remote GPU service via `MotionGenerationEngine`.
 - Add object storage and CDN by extending `packages/storage`.
+
+
+## External inference backends (Python / remote GPU)
+`packages/engine-sdk` defines an adapter contract with three explicit stages:
+1. `extractPose`
+2. `generateFrames`
+3. `composeVideo`
+
+To plug in a real backend later without changing API contracts:
+- **Python local backend**: set `ENGINE=local-process` and point command env vars to python entrypoints/scripts.
+  - Example: `LOCAL_PROCESS_POSE_COMMAND="python ./scripts/pose.py"`
+- **Remote GPU service**: set `ENGINE=remote-http` and implement `RemoteHttpEngine`/adapter to call your HTTP endpoints for the same three stages.
+
+Because worker/job APIs stay unchanged, the web and API layers do not need changes when swapping engines.
