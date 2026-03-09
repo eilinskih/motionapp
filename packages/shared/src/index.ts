@@ -9,10 +9,13 @@ export enum JobStatus {
 }
 
 export type JobStep =
+  | JobStatus.QUEUED
   | JobStatus.PREPROCESSING
   | JobStatus.POSE_EXTRACTION
   | JobStatus.GENERATION
-  | JobStatus.POSTPROCESSING;
+  | JobStatus.POSTPROCESSING
+  | JobStatus.COMPLETED
+  | JobStatus.FAILED;
 
 export interface JobLogEntry {
   at: string;
@@ -22,9 +25,13 @@ export interface JobLogEntry {
 export interface JobRecord {
   id: string;
   status: JobStatus;
+  currentStep: JobStep;
+  progress: number;
   sourcePhotoPath: string;
+  normalizedSourcePhotoPath?: string;
   drivingVideoPath: string;
   normalizedVideoPath?: string;
+  previewThumbnailPath?: string;
   outputVideoPath?: string;
   logs: JobLogEntry[];
   errorMessage?: string;

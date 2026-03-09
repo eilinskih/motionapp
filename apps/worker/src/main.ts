@@ -1,11 +1,11 @@
-import { mkdir } from 'node:fs/promises';
+import { mkdir, copyFile } from 'node:fs/promises';
 import path from 'node:path';
 import Redis from 'ioredis';
 import { Worker } from 'bullmq';
 import { MockEngine } from '@motionapp/engine-sdk';
 import { createStoragePaths, ensureJobDir, readJsonFile, withFileLock, writeJsonAtomic } from '@motionapp/storage';
-import { JobRecord, JobStatus } from '@motionapp/shared';
-import { extractAudio, normalizeToMp4 } from '@motionapp/ffmpeg-utils';
+import { JobRecord, JobStatus, JobStep } from '@motionapp/shared';
+import { extractAudio, extractThumbnail, normalizeImage, normalizeToMp4 } from '@motionapp/ffmpeg-utils';
 
 const redisHost = process.env.REDIS_HOST ?? 'localhost';
 const redisPort = Number(process.env.REDIS_PORT ?? 6379);
@@ -28,6 +28,37 @@ const saveJobs = async (jobs: JobRecord[]): Promise<void> => {
   await writeJsonAtomic(jobsFile, jobs);
 };
 
+const logEvent = (level: 'info' | 'error', event: string, ctx: Record<string, unknown>) => {
+  // eslint-disable-next-line no-console
+  console.log(
+    JSON.stringify({
+      at: new Date().toISOString(),
+      level,
+      event,
+      ...ctx
+    })
+  );
+};
+
+const withJobState = (
+  job: JobRecord,
+  status: JobStatus,
+  currentStep: JobStep,
+  progress: number,
+  message: string,
+  errorMessage?: string,
+  fields?: Partial<JobRecord>
+): JobRecord => ({
+  ...job,
+  ...fields,
+  status,
+  currentStep,
+  progress,
+  errorMessage,
+  updatedAt: new Date().toISOString(),
+  logs: [...job.logs, { at: new Date().toISOString(), message }]
+});
+
 const updateJob = async (id: string, updater: (job: JobRecord) => JobRecord): Promise<JobRecord> =>
   withFileLock(jobsFile, async () => {
     const jobs = await loadJobs();
@@ -39,47 +70,87 @@ const updateJob = async (id: string, updater: (job: JobRecord) => JobRecord): Pr
     return jobs[idx];
   });
 
-const logStep = (job: JobRecord, status: JobStatus, message: string, errorMessage?: string): JobRecord => ({
-  ...job,
-  status,
-  errorMessage,
-  updatedAt: new Date().toISOString(),
-  logs: [...job.logs, { at: new Date().toISOString(), message }]
-});
-
 const worker = new Worker(
   queueName,
   async (bullJob) => {
     const id = String(bullJob.data.id);
     const storagePaths = createStoragePaths(storageRoot);
     const jobDir = await ensureJobDir(storagePaths, id);
+    const tempDir = path.join(jobDir, 'temp');
+    const poseDir = path.join(jobDir, 'pose');
+    const generatedFramesDir = path.join(jobDir, 'generated-frames');
+
+    await mkdir(tempDir, { recursive: true });
+    logEvent('info', 'job_received', { jobId: id, queueName });
 
     try {
-      const preprocessing = await updateJob(id, (job) => logStep(job, JobStatus.PREPROCESSING, 'preprocessing started'));
+      const preprocessing = await updateJob(id, (job) =>
+        withJobState(job, JobStatus.PREPROCESSING, JobStatus.PREPROCESSING, 10, 'preprocessing started')
+      );
 
-      const normalizedPath = path.join(jobDir, 'normalized.mp4');
+      const normalizedPath = path.join(tempDir, 'driving.normalized.mp4');
+      const thumbnailPath = path.join(tempDir, 'driving.thumbnail.jpg');
+      const normalizedSourcePhotoPath = path.join(tempDir, 'source.normalized.jpg');
+      const audioPath = path.join(tempDir, 'driving.audio.aac');
+
       await normalizeToMp4(preprocessing.drivingVideoPath, normalizedPath);
-      await extractAudio(normalizedPath, path.join(jobDir, 'audio.aac'));
+      await extractThumbnail(normalizedPath, thumbnailPath);
+      await normalizeImage(preprocessing.sourcePhotoPath, normalizedSourcePhotoPath);
+      await copyFile(normalizedSourcePhotoPath, path.join(jobDir, 'source.normalized.jpg'));
 
-      await updateJob(id, (job) => ({ ...logStep(job, JobStatus.POSE_EXTRACTION, 'pose extraction finished'), normalizedVideoPath: normalizedPath }));
+      let preservedAudioPath: string | undefined;
+      try {
+        await extractAudio(normalizedPath, audioPath);
+        preservedAudioPath = audioPath;
+      } catch {
+        preservedAudioPath = undefined;
+      }
 
-      await updateJob(id, (job) => logStep(job, JobStatus.GENERATION, 'generation started'));
+      await updateJob(id, (job) =>
+        withJobState(job, JobStatus.POSE_EXTRACTION, JobStatus.POSE_EXTRACTION, 35, 'pose extraction started', undefined, {
+          normalizedVideoPath: normalizedPath,
+          normalizedSourcePhotoPath,
+          previewThumbnailPath: thumbnailPath
+        })
+      );
+
+      logEvent('info', 'pose_extraction_mock_start', { jobId: id, poseDir });
+
+      const generatedVideoPath = path.join(tempDir, 'generated.mock.mp4');
       const outputVideoPath = path.join(storagePaths.outputsDir, `${id}.mp4`);
+
+      await updateJob(id, (job) =>
+        withJobState(job, JobStatus.GENERATION, JobStatus.GENERATION, 60, 'generation started')
+      );
+
       await engine.generate({
-        sourcePhotoPath: preprocessing.sourcePhotoPath,
+        sourcePhotoPath: normalizedSourcePhotoPath,
         normalizedDrivingVideoPath: normalizedPath,
-        outputVideoPath
+        generatedVideoPath,
+        outputVideoPath,
+        poseOutputDir: poseDir,
+        framesOutputDir: generatedFramesDir,
+        audioPath: preservedAudioPath
       });
 
-      await updateJob(id, (job) => logStep(job, JobStatus.POSTPROCESSING, 'postprocessing started'));
+      await updateJob(id, (job) =>
+        withJobState(job, JobStatus.POSTPROCESSING, JobStatus.POSTPROCESSING, 90, 'postprocessing started')
+      );
 
-      await updateJob(id, (job) => ({
-        ...logStep(job, JobStatus.COMPLETED, 'job completed successfully'),
-        outputVideoPath
-      }));
+      await updateJob(id, (job) =>
+        withJobState(job, JobStatus.COMPLETED, JobStatus.COMPLETED, 100, 'job completed successfully', undefined, {
+          outputVideoPath,
+          previewThumbnailPath: thumbnailPath
+        })
+      );
+
+      logEvent('info', 'job_completed', { jobId: id, outputVideoPath });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'unknown worker error';
-      await updateJob(id, (job) => logStep(job, JobStatus.FAILED, `job failed: ${message}`, message));
+      await updateJob(id, (job) =>
+        withJobState(job, JobStatus.FAILED, JobStatus.FAILED, job.progress, `job failed: ${message}`, message)
+      );
+      logEvent('error', 'job_failed', { jobId: id, error: message });
       throw error;
     }
   },
@@ -89,6 +160,5 @@ const worker = new Worker(
 );
 
 worker.on('ready', () => {
-  // eslint-disable-next-line no-console
-  console.log('Worker ready');
+  logEvent('info', 'worker_ready', { queueName, redisHost, redisPort });
 });

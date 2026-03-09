@@ -100,12 +100,27 @@ export class JobsController {
     await saveBufferFile(drivingPath, driving.buffer);
 
     const job = await this.jobsService.createJob(sourcePath, drivingPath);
-    return { id: job.id, status: job.status };
+    return {
+      id: job.id,
+      status: job.status,
+      currentStep: job.currentStep,
+      progress: job.progress,
+      errorMessage: job.errorMessage,
+      createdAt: job.createdAt,
+      updatedAt: job.updatedAt
+    };
   }
 
   @Get(':id')
   async getById(@Param('id') id: string) {
     return this.jobsService.getJob(id);
+  }
+
+
+  @Get(':id/thumbnail')
+  async getThumbnail(@Param('id') id: string, @Res() res: Response) {
+    const thumbnailPath = await this.jobsService.getThumbnailPath(id);
+    return res.sendFile(thumbnailPath);
   }
 
   @Get(':id/result')

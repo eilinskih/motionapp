@@ -40,13 +40,50 @@ export const normalizeToMp4 = async (inputPath: string, outputPath: string): Pro
   ]);
 };
 
+export const normalizeImage = async (inputPath: string, outputPath: string): Promise<void> => {
+  await runFfmpeg([
+    '-i',
+    inputPath,
+    '-vf',
+    "scale='min(1024,iw)':'min(1024,ih)':force_original_aspect_ratio=decrease",
+    '-frames:v',
+    '1',
+    outputPath
+  ]);
+};
+
+export const extractThumbnail = async (inputPath: string, outputPath: string): Promise<void> => {
+  await runFfmpeg(['-i', inputPath, '-vf', 'thumbnail,scale=640:-1', '-frames:v', '1', outputPath]);
+};
+
 export const extractAudio = async (inputPath: string, audioPath: string): Promise<void> => {
   await runFfmpeg(['-i', inputPath, '-vn', '-acodec', 'aac', audioPath]);
 };
 
 export const createFinalOutputVideo = async (
-  normalizedVideoPath: string,
-  outputPath: string
+  generatedVideoPath: string,
+  outputPath: string,
+  audioPath?: string
 ): Promise<void> => {
-  await runFfmpeg(['-i', normalizedVideoPath, '-c:v', 'copy', '-c:a', 'copy', outputPath]);
+  if (audioPath) {
+    await runFfmpeg([
+      '-i',
+      generatedVideoPath,
+      '-i',
+      audioPath,
+      '-map',
+      '0:v:0',
+      '-map',
+      '1:a:0',
+      '-c:v',
+      'copy',
+      '-c:a',
+      'aac',
+      '-shortest',
+      outputPath
+    ]);
+    return;
+  }
+
+  await runFfmpeg(['-i', generatedVideoPath, '-c:v', 'copy', '-an', outputPath]);
 };

@@ -35,14 +35,31 @@ export default function JobPage({ params }: { params: { id: string } }) {
     };
   }, [params.id]);
 
+  const progress = Math.max(0, Math.min(100, job?.progress ?? 0));
+
   return (
     <main>
       <div className="card">
         <h1>Job {params.id}</h1>
         {error && <p>{error}</p>}
         <p>Status: {job?.status ?? 'loading...'}</p>
+        <p>Current step: {job?.currentStep ?? '-'}</p>
+
+        <div className="progress-wrap" aria-label="Job progress">
+          <div className="progress-bar" style={{ width: `${progress}%` }} />
+        </div>
+        <p>{progress}%</p>
+
+        {job?.previewThumbnailPath && (
+          <img
+            src={`${API_BASE}/jobs/${params.id}/thumbnail`}
+            alt="Driving video preview thumbnail"
+            className="thumb"
+          />
+        )}
+
         {job?.status === JobStatus.COMPLETED && <Link href={`/jobs/${params.id}/result`}>View result video</Link>}
-        {job?.status === JobStatus.FAILED && <p>Failed: {job.errorMessage}</p>}
+        {job?.status === JobStatus.FAILED && <p className="error">Failed: {job.errorMessage ?? 'Unknown error'}</p>}
       </div>
       <section>
         <h2>Logs</h2>

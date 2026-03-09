@@ -25,6 +25,8 @@ export class JobsService {
     const job: JobRecord = {
       id,
       status: JobStatus.QUEUED,
+      currentStep: JobStatus.QUEUED,
+      progress: 0,
       sourcePhotoPath,
       drivingVideoPath,
       logs: [{ at: now, message: 'Job created' }],
@@ -48,5 +50,11 @@ export class JobsService {
     const job = await this.getJob(id);
     if (!job.outputVideoPath) throw new NotFoundException('result not ready');
     return path.resolve(job.outputVideoPath);
+  }
+
+  async getThumbnailPath(id: string): Promise<string> {
+    const job = await this.getJob(id);
+    if (!job.previewThumbnailPath) throw new NotFoundException('thumbnail not ready');
+    return path.resolve(job.previewThumbnailPath);
   }
 }
