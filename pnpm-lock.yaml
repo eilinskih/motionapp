@@ -1,0 +1,84 @@
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .:
+    dependencies: {}
+    devDependencies: {}
+
+  apps/api:
+    dependencies:
+      '@motionapp/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
+      '@motionapp/storage':
+        specifier: workspace:*
+        version: link:../../packages/storage
+    devDependencies:
+      '@types/node':
+        specifier: ^20.17.0
+        version: 20.17.0
+
+  apps/web:
+    dependencies:
+      '@motionapp/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
+    devDependencies:
+      '@types/node':
+        specifier: ^20.17.0
+        version: 20.17.0
+
+  apps/worker:
+    dependencies:
+      '@motionapp/engine-sdk':
+        specifier: workspace:*
+        version: link:../../packages/engine-sdk
+      '@motionapp/ffmpeg-utils':
+        specifier: workspace:*
+        version: link:../../packages/ffmpeg-utils
+      '@motionapp/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
+      '@motionapp/storage':
+        specifier: workspace:*
+        version: link:../../packages/storage
+    devDependencies:
+      '@types/node':
+        specifier: ^20.17.0
+        version: 20.17.0
+
+  packages/engine-sdk:
+    dependencies:
+      '@motionapp/ffmpeg-utils':
+        specifier: workspace:*
+        version: link:../ffmpeg-utils
+      '@motionapp/storage':
+        specifier: workspace:*
+        version: link:../storage
+    devDependencies:
+      '@types/node':
+        specifier: ^20.17.0
+        version: 20.17.0
+      typescript:
+        specifier: ^5.6.2
+        version: 5.6.2
+
+  packages/ffmpeg-utils:
+    devDependencies: {}
+
+  packages/shared:
+    devDependencies: {}
+
+  packages/storage:
+    devDependencies:
+      '@types/node':
+        specifier: ^20.17.0
+        version: 20.17.0
+      typescript:
+        specifier: ^5.6.2
+        version: 5.6.2
