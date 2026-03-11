@@ -61,15 +61,22 @@ export const extractAudio = async (inputPath: string, audioPath: string): Promis
 };
 
 
-export const createMockGeneratedVideo = async (
+export const createMotionDrivenVideo = async (
+  sourcePhotoPath: string,
   drivingVideoPath: string,
   outputPath: string
 ): Promise<void> => {
   await runFfmpeg([
+    '-loop',
+    '1',
+    '-i',
+    sourcePhotoPath,
     '-i',
     drivingVideoPath,
-    '-vf',
-    "hue=s=1.15,eq=contrast=1.06:brightness=0.02,drawbox=x=10:y=10:w=iw/5:h=ih/16:color=blue@0.35:t=fill",
+    '-filter_complex',
+    "[0:v][1:v]scale2ref=w=iw:h=ih[photo][drive];[photo]setsar=1[photoSized];[drive]setsar=1[driveSized];[photoSized][driveSized]blend=all_mode=overlay:all_opacity=0.28[blended];[blended]eq=saturation=0.88:contrast=1.04[outv]",
+    '-map',
+    '[outv]',
     '-c:v',
     'libx264',
     '-preset',
@@ -78,6 +85,7 @@ export const createMockGeneratedVideo = async (
     '23',
     '-pix_fmt',
     'yuv420p',
+    '-shortest',
     '-an',
     outputPath
   ]);
