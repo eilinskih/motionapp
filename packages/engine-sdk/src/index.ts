@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
-import { createFinalOutputVideo, createMockGeneratedVideo } from '@motionapp/ffmpeg-utils';
+import { createFinalOutputVideo, createMotionDrivenVideo } from '@motionapp/ffmpeg-utils';
 
 export interface GenerationInput {
   sourcePhotoPath: string;
@@ -96,7 +96,7 @@ export class MockInferenceAdapter implements InferenceAdapter {
       await sleep(200);
     }
 
-    await createMockGeneratedVideo(input.normalizedDrivingVideoPath, input.generatedVideoPath);
+    await createMotionDrivenVideo(input.sourcePhotoPath, input.normalizedDrivingVideoPath, input.generatedVideoPath);
   }
 
   async composeVideo(input: VideoCompositionInput): Promise<void> {
@@ -165,7 +165,7 @@ export class LocalProcessInferenceAdapter implements InferenceAdapter {
     });
 
     // Stub fallback until an external backend is configured.
-    await createMockGeneratedVideo(input.normalizedDrivingVideoPath, input.generatedVideoPath);
+    await createMotionDrivenVideo(input.sourcePhotoPath, input.normalizedDrivingVideoPath, input.generatedVideoPath);
   }
 
   async composeVideo(input: VideoCompositionInput): Promise<void> {
