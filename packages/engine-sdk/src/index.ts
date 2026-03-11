@@ -164,8 +164,10 @@ export class LocalProcessInferenceAdapter implements InferenceAdapter {
       GENERATED_VIDEO_PATH: input.generatedVideoPath
     });
 
-    // Stub fallback until an external backend is configured.
-    await createMotionDrivenVideo(input.sourcePhotoPath, input.normalizedDrivingVideoPath, input.generatedVideoPath);
+    if (!this.commands.frameGeneration) {
+      // Stub fallback until an external backend is configured.
+      await createMotionDrivenVideo(input.sourcePhotoPath, input.normalizedDrivingVideoPath, input.generatedVideoPath);
+    }
   }
 
   async composeVideo(input: VideoCompositionInput): Promise<void> {
@@ -175,8 +177,10 @@ export class LocalProcessInferenceAdapter implements InferenceAdapter {
       AUDIO_PATH: input.audioPath
     });
 
-    // Stub fallback keeps current behavior when no composition command is provided.
-    await createFinalOutputVideo(input.generatedVideoPath, input.outputVideoPath, input.audioPath);
+    if (!this.commands.videoComposition) {
+      // Stub fallback keeps current behavior when no composition command is provided.
+      await createFinalOutputVideo(input.generatedVideoPath, input.outputVideoPath, input.audioPath);
+    }
   }
 }
 
